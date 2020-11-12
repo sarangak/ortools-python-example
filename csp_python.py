@@ -1,5 +1,5 @@
 """
-The Zebra puzzle. Let's see if I can solve it with or-tools. - SK
+The Zebra puzzle.
 https://en.wikipedia.org/wiki/Zebra_Puzzle
 
 There are five houses in a row, each of a different color, that are inhabited
@@ -24,17 +24,20 @@ m. The Japanese smokes Parliaments.
 n. The Norwegian lives next to the blue house.
 """
 
-# Modified from  https://developers.google.com/optimization/cp/cryptarithmetic
+# Modified from https://developers.google.com/optimization/cp/cryptarithmetic
 
 from ortools.sat.python import cp_model
 
 
-def CPIsFun():
-    # Constraint programming engine
+def puzzle_constraints():
     model = cp_model.CpModel()
 
-    # There are five houses in the Zebra puzzle.  Each of the following variables will be assigned to one of the five houses.
-    # We will model this with NewIntVar(1, 5).
+    # There are five houses in the Zebra puzzle. We will number the houses 1
+    # through 5 going from left to right. To model the assignments of color,
+    # nationality, etc. each possible value is assigned a variable that is
+    # constrained to be an integer from 1 to 5: `NewIntVar(1,5)`. Then the
+    # solver DSL is used to further constrain these values based on the rules
+    # of the puzzle.
     colors = "blue red green ivory yellow".split()
     nationalities = "Englishman Spaniard Ukrainian Norwegian Japanese".split()
     pets = "dog snails fox horse zebra".split()
@@ -43,68 +46,70 @@ def CPIsFun():
 
     # We need to group variables in lists to be able to use
     # the global constraint AllDifferent later
-    colorcons = []
+    colorgroup = []
     for color in colors:
-        colorcons.append(model.NewIntVar(1, 5, color))
+        colorgroup.append(model.NewIntVar(1, 5, color))
 
-    nationcons = []
+    nationgroup = []
     for nation in nationalities:
-        nationcons.append(model.NewIntVar(1, 5, nation))
+        nationgroup.append(model.NewIntVar(1, 5, nation))
 
-    petcons = []
+    petgroup = []
     for pet in pets:
-        petcons.append(model.NewIntVar(1, 5, pet))
+        petgroup.append(model.NewIntVar(1, 5, pet))
 
-    drinkcons = []
+    drinkgroup = []
     for drink in drinks:
-        drinkcons.append(model.NewIntVar(1, 5, drink))
+        drinkgroup.append(model.NewIntVar(1, 5, drink))
 
-    smokecons = []
+    smokegroup = []
     for smoke in smokes:
-        smokecons.append(model.NewIntVar(1, 5, smoke))
+        smokegroup.append(model.NewIntVar(1, 5, smoke))
 
-    # Constraints -  every category needs an assignment to distinct house numbers
-    model.AddAllDifferent(colorcons)
-    model.AddAllDifferent(nationcons)
-    model.AddAllDifferent(petcons)
-    model.AddAllDifferent(drinkcons)
-    model.AddAllDifferent(smokecons)
+    variables = colorgroup + nationgroup + petgroup + drinkgroup + smokegroup
+
+    # Initial constraint
+    # Every category needs an assignment to distinct house numbers
+    model.AddAllDifferent(colorgroup)
+    model.AddAllDifferent(nationgroup)
+    model.AddAllDifferent(petgroup)
+    model.AddAllDifferent(drinkgroup)
+    model.AddAllDifferent(smokegroup)
 
     # Now add the constraints of the description statements
     # a. The Englishman lives in the red house.
-    model.Add(nationcons[nationalities.index('Englishman')] == colorcons[
+    model.Add(nationgroup[nationalities.index('Englishman')] == colorgroup[
         colors.index('red')])
 
     # b. The Spaniard owns the dog.
-    model.Add(nationcons[nationalities.index('Spaniard')] == petcons[
+    model.Add(nationgroup[nationalities.index('Spaniard')] == petgroup[
         pets.index('dog')])
 
     # c. Coffee is drunk in the green house.
-    model.Add(
-        drinkcons[drinks.index('coffee')] == colorcons[colors.index('green')])
+    model.Add(drinkgroup[drinks.index('coffee')] == colorgroup[colors.index(
+        'green')])
 
     # d. The Ukrainian drinks tea.
-    model.Add(drinkcons[drinks.index('tea')] == nationcons[nationalities.index(
-        'Ukrainian')])
+    model.Add(drinkgroup[drinks.index('tea')] == nationgroup[
+        nationalities.index('Ukrainian')])
 
     # e. The green house is immediately to the right of the ivory house.
-    model.Add(
-        colorcons[colors.index('green')] == colorcons[colors.index('ivory')] +
-        1)
+    model.Add(colorgroup[colors.index('green')] ==
+              colorgroup[colors.index('ivory')] + 1)
 
     # f. The Old Gold smoker owns snails.
     model.Add(
-        smokecons[smokes.index('OldGold')] == petcons[pets.index('snails')])
+        smokegroup[smokes.index('OldGold')] == petgroup[pets.index('snails')])
 
     # g. Kools are smoked in the yellow house.
-    model.Add(
-        smokecons[smokes.index('Kools')] == colorcons[colors.index('yellow')])
+    model.Add(smokegroup[smokes.index('Kools')] == colorgroup[colors.index(
+        'yellow')])
 
     # h. Milk is drunk in the middle house.
-    model.Add(drinkcons[drinks.index('milk')] == 3)  # 3 is the middle house
+    model.Add(drinkgroup[drinks.index('milk')] == 3)  # 3 is the middle house
 
     # i. The Norwegian lives in the first house.
-    model.Add(nationcons[nationalities.index('Norwegian')] ==
+    model.Add(nationgroup[nationalities.index('Norwegian')] ==
               1)  # 1 is the first house
 
     # j. The man who smokes Chesterfields lives in the house next to the man with the fox.
@@ -112,38 +117,42 @@ def CPIsFun():
     # We could also use the absolute value constraint, but I think this is simpler.
     diffvar1 = model.NewIntVarFromDomain(cp_model.Domain.FromValues([-1, 1]),
                                          'dist_chesterfield_fox')
-    model.Add(diffvar1 == petcons[pets.index('fox')] -
-              smokecons[smokes.index('Chesterfield')])
+    model.Add(diffvar1 == petgroup[pets.index('fox')] -
+              smokegroup[smokes.index('Chesterfield')])
 
     # k. Kools are smoked in the house next to the house where the horse is kept.
     diffvar2 = model.NewIntVarFromDomain(cp_model.Domain.FromValues([-1, 1]),
                                          'dist_kools_horse')
-    model.Add(diffvar2 == petcons[pets.index('horse')] -
-              smokecons[smokes.index('Kools')])
+    model.Add(diffvar2 == petgroup[pets.index('horse')] -
+              smokegroup[smokes.index('Kools')])
 
     # l. The Lucky Strike smoker drinks orange juice.
-    model.Add(drinkcons[drinks.index('oj')] == smokecons[smokes.index(
+    model.Add(drinkgroup[drinks.index('oj')] == smokegroup[smokes.index(
         'LuckyStrike')])
 
     # m. The Japanese smokes Parliaments.
-    model.Add(nationcons[nationalities.index('Japanese')] == smokecons[
+    model.Add(nationgroup[nationalities.index('Japanese')] == smokegroup[
         smokes.index('Parliament')])
 
     # # n. The Norwegian lives next to the blue house.
     diffvar3 = model.NewIntVarFromDomain(cp_model.Domain.FromValues([-1, 1]),
                                          'dist_american_blue')
-    model.Add(diffvar3 == colorcons[colors.index('blue')] -
-              nationcons[nationalities.index('Norwegian')])
+    model.Add(diffvar3 == colorgroup[colors.index('blue')] -
+              nationgroup[nationalities.index('Norwegian')])
 
-    # Solve model.
+    return model, variables
+
+
+def main():
+    model, variables = puzzle_constraints()
+
+    # Set up the solver
     solver = cp_model.CpSolver()
-    solution_printer = cp_model.VarArraySolutionPrinter([
-        item
-        for sublist in [colorcons, nationcons, drinkcons, petcons, smokecons]
-        for item in sublist
-    ])
-    status = solver.SearchForAllSolutions(model, solution_printer)
+    solution_printer = cp_model.VarArraySolutionPrinter(
+        [item for item in variables])
 
+    # Solve the puzzle
+    status = solver.SearchForAllSolutions(model, solution_printer)
     print()
     print('Statistics')
     print('  - status          : %s' % solver.StatusName(status))
@@ -151,7 +160,3 @@ def CPIsFun():
     print('  - branches        : %i' % solver.NumBranches())
     print('  - wall time       : %f s' % solver.WallTime())
     print('  - solutions found : %i' % solution_printer.solution_count())
-
-
-def main():
-    CPIsFun()
